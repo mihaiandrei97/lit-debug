@@ -205,17 +205,21 @@ class LitDebugger extends LitElement {
   return propKeys.map((key) => {
     const value = el[key];
     const isArray = Array.isArray(value);
+    const isObject = value !== null && typeof value === 'object' && !isArray;
     
     return html`
       <label>
-        ${key} ${isArray ? '(Array)' : ''}
-        ${isArray 
+        ${key} ${isArray ? '(Array)' : isObject ? '(Object)' : ''}
+        ${isArray || isObject
           ? html`
               <textarea
                 rows="4"
                 .value=${JSON.stringify(value, null, 2)}
                 @input=${(e) => this._updateProp(el, key, e.target.value)}
-                placeholder="Enter JSON array, e.g. ['item1', 'item2']"
+                placeholder=${isArray 
+                  ? "Enter JSON array, e.g. ['item1', 'item2']"
+                  : "Enter JSON object, e.g. {'key': 'value'}"
+                }
               ></textarea>
             `
           : html`
@@ -286,6 +290,18 @@ class LitDebugger extends LitElement {
         }
       } catch (e) {
         console.warn(`Invalid JSON for array property ${key}:`, e);
+        return;
+      }
+    } else if (old !== null && typeof old === 'object' && !Array.isArray(old)) {
+      try {
+        val = JSON.parse(raw);
+        // Validate that the parsed value is an object (and not an array or null)
+        if (val === null || typeof val !== 'object' || Array.isArray(val)) {
+          console.warn(`Expected object for ${key}, got:`, val);
+          return;
+        }
+      } catch (e) {
+        console.warn(`Invalid JSON for object property ${key}:`, e);
         return;
       }
     } else if (typeof old === 'number') {
