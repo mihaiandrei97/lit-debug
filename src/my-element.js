@@ -21,6 +21,7 @@ export class MyElement extends LitElement {
        */
       count: { type: Number },
       list: { type: Array },
+      startDate: {type: Date }
     }
   }
 
@@ -29,6 +30,7 @@ export class MyElement extends LitElement {
     this.docsHint = 'Click on the Vite and Lit logos to learn more'
     this.count = 0
     this.list = [];
+    this.startDate = new Date();
   }
 
   render() {
@@ -48,6 +50,7 @@ export class MyElement extends LitElement {
         </button>
       </div>
       <p class="read-the-docs">${this.docsHint}</p>
+      <p>Start Date: ${this.startDate.toLocaleDateString()}</p>
       <ul>
         ${this.list.map(item => html`<li>${item}</li>`)}
       </ul>

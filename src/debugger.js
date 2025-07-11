@@ -205,29 +205,38 @@ class LitDebugger extends LitElement {
   return propKeys.map((key) => {
     const value = el[key];
     const isArray = Array.isArray(value);
-    const isObject = value !== null && typeof value === 'object' && !isArray;
+    const isDate = value instanceof Date;
+    const isObject = value !== null && typeof value === 'object' && !isArray && !isDate;
     
     return html`
       <label>
-        ${key} ${isArray ? '(Array)' : isObject ? '(Object)' : ''}
-        ${isArray || isObject
+        ${key} ${isArray ? '(Array)' : isDate ? '(Date)' : isObject ? '(Object)' : ''}
+        ${isDate
           ? html`
-              <textarea
-                rows="4"
-                .value=${JSON.stringify(value, null, 2)}
-                @input=${(e) => this._updateProp(el, key, e.target.value)}
-                placeholder=${isArray 
-                  ? "Enter JSON array, e.g. ['item1', 'item2']"
-                  : "Enter JSON object, e.g. {'key': 'value'}"
-                }
-              ></textarea>
-            `
-          : html`
               <input
-                .value=${String(value)}
+                type="datetime-local"
+                .value=${this._dateToInputValue(value)}
                 @input=${(e) => this._updateProp(el, key, e.target.value)}
               />
             `
+          : isArray || isObject
+            ? html`
+                <textarea
+                  rows="4"
+                  .value=${JSON.stringify(value, null, 2)}
+                  @input=${(e) => this._updateProp(el, key, e.target.value)}
+                  placeholder=${isArray 
+                    ? "Enter JSON array, e.g. ['item1', 'item2']"
+                    : "Enter JSON object, e.g. {'key': 'value'}"
+                  }
+                ></textarea>
+              `
+            : html`
+                <input
+                  .value=${String(value)}
+                  @input=${(e) => this._updateProp(el, key, e.target.value)}
+                />
+              `
         }
       </label>
     `;
@@ -271,6 +280,17 @@ class LitDebugger extends LitElement {
     }
   }
 
+  _dateToInputValue(date) {
+    if (!date || !(date instanceof Date)) return '';
+    // Convert to local datetime-local format (YYYY-MM-DDTHH:MM)
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
   _onPropertyChanged(e) {
     // Force re-render when properties change
     this.requestUpdate();
@@ -280,7 +300,14 @@ class LitDebugger extends LitElement {
     const old = el[key];
     let val = raw;
     
-    if (Array.isArray(old)) {
+    if (old instanceof Date) {
+      // Handle Date objects
+      val = new Date(raw);
+      if (isNaN(val.getTime())) {
+        console.warn(`Invalid date for ${key}:`, raw);
+        return;
+      }
+    } else if (Array.isArray(old)) {
       try {
         val = JSON.parse(raw);
         // Validate that the parsed value is an array
