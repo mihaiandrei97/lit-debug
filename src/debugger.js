@@ -5,63 +5,281 @@ class LitDebugger extends LitElement {
     target: { type: Object },
     selected: { type: Object },
     components: { type: Array },
+    isOpen: { type: Boolean },
   };
 
   static styles = css`
     :host {
-      display: flex;
-      border: 1px solid #ccc;
-      font-family: sans-serif;
+      position: relative;
+      display: block;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 14px;
-      width: 100%;
+      --primary-color: #2196F3;
+      --primary-dark: #1976D2;
+      --success-color: #4CAF50;
+      --error-color: #F44336;
+      --warning-color: #FF9800;
+      --background: #ffffff;
+      --surface: #f8f9fa;
+      --border: #e0e0e0;
+      --text: #333333;
+      --text-secondary: #666666;
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      --shadow-light: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
+
     .host {
-      flex: 1;
-      padding: 1rem;
+      display: block;
+      width: 100%;
+      min-height: 200px;
     }
-    .debugger {
-      width: 300px;
-      background: #f8f8f8;
-      border-left: 1px solid #ccc;
+
+    .debugger-toggle {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1000;
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: all 0.3s ease;
+      font-size: 20px;
+    }
+
+    .debugger-toggle:hover {
+      background: var(--primary-dark);
+      transform: scale(1.1);
+    }
+
+    .debugger-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 400px;
+      height: 100vh;
+      background: var(--background);
+      box-shadow: var(--shadow);
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .debugger-panel.open {
+      transform: translateX(0);
+    }
+
+    .debugger-header {
+      background: var(--primary-color);
+      color: white;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: var(--shadow-light);
+    }
+
+    .debugger-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      transition: background 0.2s ease;
+    }
+
+    .close-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .debugger-content {
+      flex: 1;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
     }
+
     .component-list {
-      border-bottom: 1px solid #ddd;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
       max-height: 200px;
       overflow-y: auto;
     }
-    .component-list button {
+
+    .component-list h4 {
+      margin: 0;
+      padding: 12px 16px;
+      background: var(--background);
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .component-item {
       display: block;
       width: 100%;
-      padding: 0.5rem;
+      padding: 12px 16px;
       text-align: left;
       background: none;
       border: none;
-      border-bottom: 1px dashed #ccc;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.2s ease;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .component-item:hover {
+      background: var(--primary-color);
+      color: white;
+    }
+
+    .component-item.selected {
+      background: var(--primary-color);
+      color: white;
+      font-weight: 500;
+    }
+
+    .component-tag {
+      font-weight: 500;
+    }
+
+    .component-id {
+      font-size: 12px;
+      opacity: 0.7;
+      margin-left: 4px;
+    }
+
+    .details {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background: var(--background);
+    }
+
+    .details h3 {
+      margin: 0 0 20px 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+    }
+
+    .details h3::before {
+      content: '⚛️';
+      margin-right: 8px;
+    }
+
+    .property-group {
+      margin-bottom: 20px;
+    }
+
+    .property-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .property-type {
+      display: inline-block;
+      background: var(--primary-color);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      margin-left: 8px;
+    }
+
+    .property-input, .property-textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.2s ease;
+      box-sizing: border-box;
+    }
+
+    .property-input:focus, .property-textarea:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+    }
+
+    .property-textarea {
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 80px;
+      line-height: 1.4;
+    }
+
+    .property-input[type="datetime-local"] {
       cursor: pointer;
     }
-    .component-list button:hover {
-      background: #eee;
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-secondary);
     }
-    .details {
-      padding: 1rem;
-      overflow-y: auto;
-      flex: 1;
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
     }
-    label {
-      display: block;
-      margin: 0.5rem 0;
+
+    .scrollbar-thin {
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
     }
-    input, textarea {
-      width: 100%;
-      box-sizing: border-box;
-      font-family: monospace;
-      font-size: 12px;
+
+    .scrollbar-thin::-webkit-scrollbar {
+      width: 6px;
     }
-    textarea {
-      resize: vertical;
-      min-height: 60px;
+
+    .scrollbar-thin::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+      background: var(--text-secondary);
+    }
+
+    @media (max-width: 768px) {
+      .debugger-panel {
+        width: 100vw;
+      }
     }
   `;
 
@@ -70,6 +288,7 @@ class LitDebugger extends LitElement {
     this.target = null;
     this.selected = null;
     this.components = [];
+    this.isOpen = false;
   }
 
   render() {
@@ -78,23 +297,50 @@ class LitDebugger extends LitElement {
       <div class="host">
         <slot @slotchange=${this._onSlotChange}></slot>
       </div>
-      <div class="debugger">
-        <div class="component-list">
-          ${this.components.map(
-            (el, i) => html`
-              <button @click=${() => this._select(el)}>
-                ${el.tagName.toLowerCase()} ${el.id ? `#${el.id}` : ''}
-              </button>
-            `
-          )}
+      
+      <button 
+        class="debugger-toggle" 
+        @click=${this._toggleDebugger}
+        title="Toggle Lit Debugger"
+      >
+        🔧
+      </button>
+      
+      <div class="debugger-panel ${this.isOpen ? 'open' : ''}">
+        <div class="debugger-header">
+          <h2 class="debugger-title">🔧 Lit Debugger</h2>
+          <button class="close-btn" @click=${this._toggleDebugger}>×</button>
         </div>
-        <div class="details">
-          ${this.selected
-            ? html`
-                <h3>${this.selected.tagName.toLowerCase()}</h3>
-                ${this._renderProps(this.selected)}
+        
+        <div class="debugger-content">
+          <div class="component-list scrollbar-thin">
+            <h4>Components (${this.components.length})</h4>
+            ${this.components.map(
+              (el) => html`
+                <button 
+                  class="component-item ${el === this.selected ? 'selected' : ''}"
+                  @click=${() => this._select(el)}
+                >
+                  <span class="component-tag">${el.tagName.toLowerCase()}</span>
+                  ${el.id ? html`<span class="component-id">#${el.id}</span>` : ''}
+                </button>
               `
-            : html`<em>Select a component</em>`}
+            )}
+          </div>
+          
+          <div class="details scrollbar-thin">
+            ${this.selected
+              ? html`
+                  <h3>${this.selected.tagName.toLowerCase()}</h3>
+                  ${this._renderProps(this.selected)}
+                `
+              : html`
+                  <div class="empty-state">
+                    <div class="empty-state-icon">🎯</div>
+                    <p>Select a component to inspect its properties</p>
+                  </div>
+                `}
+          </div>
         </div>
       </div>
     `;
@@ -208,12 +454,24 @@ class LitDebugger extends LitElement {
     const isDate = value instanceof Date;
     const isObject = value !== null && typeof value === 'object' && !isArray && !isDate;
     
+    let typeLabel = '';
+    if (isArray) typeLabel = 'Array';
+    else if (isDate) typeLabel = 'Date';
+    else if (isObject) typeLabel = 'Object';
+    else if (typeof value === 'boolean') typeLabel = 'Boolean';
+    else if (typeof value === 'number') typeLabel = 'Number';
+    else typeLabel = 'String';
+    
     return html`
-      <label>
-        ${key} ${isArray ? '(Array)' : isDate ? '(Date)' : isObject ? '(Object)' : ''}
+      <div class="property-group">
+        <label class="property-label">
+          ${key}
+          <span class="property-type">${typeLabel}</span>
+        </label>
         ${isDate
           ? html`
               <input
+                class="property-input"
                 type="datetime-local"
                 .value=${this._dateToInputValue(value)}
                 @input=${(e) => this._updateProp(el, key, e.target.value)}
@@ -222,6 +480,7 @@ class LitDebugger extends LitElement {
           : isArray || isObject
             ? html`
                 <textarea
+                  class="property-textarea scrollbar-thin"
                   rows="4"
                   .value=${JSON.stringify(value, null, 2)}
                   @input=${(e) => this._updateProp(el, key, e.target.value)}
@@ -233,12 +492,13 @@ class LitDebugger extends LitElement {
               `
             : html`
                 <input
+                  class="property-input"
                   .value=${String(value)}
                   @input=${(e) => this._updateProp(el, key, e.target.value)}
                 />
               `
         }
-      </label>
+      </div>
     `;
   });
 }
@@ -278,6 +538,10 @@ class LitDebugger extends LitElement {
       this._propertyListeners.forEach(cleanup => cleanup());
       this._propertyListeners = [];
     }
+  }
+
+  _toggleDebugger() {
+    this.isOpen = !this.isOpen;
   }
 
   _dateToInputValue(date) {
