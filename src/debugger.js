@@ -6,6 +6,7 @@ class LitDebugger extends LitElement {
     selected: { type: Object },
     components: { type: Array },
     isOpen: { type: Boolean },
+    activeTab: { type: String },
   };
 
   static styles = css`
@@ -276,6 +277,73 @@ class LitDebugger extends LitElement {
       background: var(--text-secondary);
     }
 
+    /* Tabs */
+    .tabs {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab {
+      padding: 12px 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      transition: all 0.2s ease;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab:hover {
+      color: var(--text);
+      background: rgba(33, 150, 243, 0.1);
+    }
+
+    .tab.active {
+      color: var(--primary-color);
+      border-bottom-color: var(--primary-color);
+    }
+
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    /* Event listeners styles */
+    .event-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      background: var(--surface);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .event-type {
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .event-target {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: monospace;
+    }
+
+    .event-count {
+      background: var(--success-color);
+      color: white;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
     @media (max-width: 768px) {
       .debugger-panel {
         width: 100vw;
@@ -289,6 +357,7 @@ class LitDebugger extends LitElement {
     this.selected = null;
     this.components = [];
     this.isOpen = false;
+    this.activeTab = 'properties';
   }
 
   render() {
@@ -332,7 +401,23 @@ class LitDebugger extends LitElement {
             ${this.selected
               ? html`
                   <h3>${this.selected.tagName.toLowerCase()}</h3>
-                  ${this._renderProps(this.selected)}
+                  <div class="tabs">
+                    <button 
+                      class="tab ${this.activeTab === 'properties' ? 'active' : ''}"
+                      @click=${() => this._setActiveTab('properties')}
+                    >
+                      📋 Properties
+                    </button>
+                    <button 
+                      class="tab ${this.activeTab === 'performance' ? 'active' : ''}"
+                      @click=${() => this._setActiveTab('performance')}
+                    >
+                      📊 Performance
+                    </button>
+                  </div>
+                  <div class="tab-content">
+                    ${this._renderTabContent()}
+                  </div>
                 `
               : html`
                   <div class="empty-state">
@@ -384,6 +469,9 @@ class LitDebugger extends LitElement {
     this.selected = el;
     
     if (this.selected) {
+      // Initialize performance tracking immediately when component is selected
+      this._initializePerformanceTracking(this.selected);
+      
       this._propertyListeners = [];
       
       // Set up mutation observer for DOM changes
@@ -542,6 +630,88 @@ class LitDebugger extends LitElement {
 
   _toggleDebugger() {
     this.isOpen = !this.isOpen;
+  }
+
+  _setActiveTab(tab) {
+    this.activeTab = tab;
+  }
+
+  _renderTabContent() {
+    switch (this.activeTab) {
+      case 'properties':
+        return this._renderProps(this.selected);
+      case 'performance':
+        return this._renderPerformance(this.selected);
+      default:
+        return this._renderProps(this.selected);
+    }
+  }
+
+  _renderPerformance(el) {
+    const perf = this._getElementPerformance(el);
+    
+    return html`
+      <div class="performance-stats">
+        <div class="property-group">
+          <div class="property-label">Render Count</div>
+          <div class="property-input" style="background: #f5f5f5;">
+            ${perf.renderCount}
+          </div>
+        </div>
+        <div class="property-group">
+          <div class="property-label">Last Render Time</div>
+          <div class="property-input" style="background: #f5f5f5;">
+            ${perf.lastRenderTime}ms
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _initializePerformanceTracking(el) {
+    // Initialize performance tracking if not exists
+    if (!el.__debugPerf) {
+      el.__debugPerf = {
+        renderCount: 0,
+        renderTimes: [],
+        createdAt: Date.now()
+      };
+      
+      // Hook into the render method to track performance
+      const originalRender = el.render;
+      if (originalRender) {
+        el.render = function() {
+          const start = performance.now();
+          const result = originalRender.call(this);
+          const end = performance.now();
+          
+          this.__debugPerf.renderCount++;
+          this.__debugPerf.renderTimes.push(end - start);
+          
+          // Keep only last render time
+          if (this.__debugPerf.renderTimes.length > 1) {
+            this.__debugPerf.renderTimes.shift();
+          }
+          
+          return result;
+        };
+      }
+    }
+  }
+
+  _getElementPerformance(el) {
+    // Ensure performance tracking is initialized
+    this._initializePerformanceTracking(el);
+    
+    const perf = el.__debugPerf;
+    const lastRenderTime = perf.renderTimes.length > 0 
+      ? perf.renderTimes[perf.renderTimes.length - 1].toFixed(2)
+      : '0.00';
+    
+    return {
+      renderCount: perf.renderCount,
+      lastRenderTime
+    };
   }
 
   _dateToInputValue(date) {
