@@ -92,7 +92,8 @@ export class FormComponent extends LitElement {
       email: '',
       category: 'general',
       message: '',
-      newsletter: false
+      newsletter: false,
+      preferredDate: ''
     };
     this.isValid = false;
     this.errorMessage = '';
@@ -152,6 +153,17 @@ export class FormComponent extends LitElement {
         </div>
 
         <div class="form-group">
+          <label for="preferredDate">Preferred Contact Date:</label>
+          <input 
+            type="date" 
+            id="preferredDate" 
+            .value=${this.formData.preferredDate}
+            @input=${this._handleDateChange}
+            min=${new Date().toISOString().split('T')[0]}
+          />
+        </div>
+
+        <div class="form-group">
           <label>
             <input 
               type="checkbox" 
@@ -176,7 +188,8 @@ export class FormComponent extends LitElement {
           <strong>Form Stats:</strong><br>
           Valid: ${this.isValid ? 'Yes' : 'No'}<br>
           Submit Count: ${this.submitCount}<br>
-          Newsletter: ${this.formData.newsletter ? 'Yes' : 'No'}
+          Newsletter: ${this.formData.newsletter ? 'Yes' : 'No'}<br>
+          Preferred Date: ${this.formData.preferredDate || 'Not selected'}
         </div>
       </form>
     `;
@@ -207,6 +220,11 @@ export class FormComponent extends LitElement {
     this._validateForm();
   }
 
+  _handleDateChange(e) {
+    this.formData = { ...this.formData, preferredDate: e.target.value };
+    this._validateForm();
+  }
+
   _validateForm() {
     const { name, email, message } = this.formData;
     this.isValid = name.trim() !== '' && email.trim() !== '' && message.trim() !== '';
@@ -232,7 +250,8 @@ export class FormComponent extends LitElement {
       email: '',
       category: 'general',
       message: '',
-      newsletter: false
+      newsletter: false,
+      preferredDate: ''
     };
     this.isValid = false;
     this.errorMessage = '';
