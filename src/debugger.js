@@ -121,7 +121,7 @@ class LitDebugger extends LitElement {
     .component-list {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      max-height: 200px;
+      max-height: 300px;
       overflow-y: auto;
     }
 
@@ -135,18 +135,62 @@ class LitDebugger extends LitElement {
       color: var(--text);
     }
 
+    .component-tree {
+      padding: 8px 0;
+    }
+
+    .component-tree-node {
+      position: relative;
+      margin-left: 16px;
+      padding: 2px 0;
+    }
+
+    .component-tree-node:first-child {
+      margin-left: 0;
+    }
+
+    .component-tree-node::before {
+      content: '';
+      position: absolute;
+      left: -12px;
+      top: 14px;
+      width: 8px;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .component-tree-node::after {
+      content: '';
+      position: absolute;
+      left: -12px;
+      top: 0;
+      width: 1px;
+      height: 100%;
+      background: var(--border);
+    }
+
+    .component-tree-node:last-child::after {
+      height: 14px;
+    }
+
+    .component-tree-node.root::before,
+    .component-tree-node.root::after {
+      display: none;
+    }
+
     .component-item {
       display: block;
       width: 100%;
-      padding: 12px 16px;
+      padding: 8px 12px;
       text-align: left;
       background: none;
       border: none;
-      border-bottom: 1px solid var(--border);
       cursor: pointer;
       transition: background 0.2s ease;
-      font-size: 14px;
+      font-size: 13px;
       color: var(--text);
+      border-radius: 4px;
+      margin: 2px 4px;
     }
 
     .component-item:hover {
@@ -356,6 +400,7 @@ class LitDebugger extends LitElement {
     this.target = null;
     this.selected = null;
     this.components = [];
+    this.componentTree = [];
     this.isOpen = false;
     this.activeTab = 'properties';
   }
@@ -384,17 +429,9 @@ class LitDebugger extends LitElement {
         <div class="debugger-content">
           <div class="component-list scrollbar-thin">
             <h4>Components (${this.components.length})</h4>
-            ${this.components.map(
-              (el) => html`
-                <button 
-                  class="component-item ${el === this.selected ? 'selected' : ''}"
-                  @click=${() => this._select(el)}
-                >
-                  <span class="component-tag">${el.tagName.toLowerCase()}</span>
-                  ${el.id ? html`<span class="component-id">#${el.id}</span>` : ''}
-                </button>
-              `
-            )}
+            <div class="component-tree">
+              ${this._renderComponentTree()}
+            </div>
           </div>
           
           <div class="details scrollbar-thin">
@@ -448,10 +485,92 @@ class LitDebugger extends LitElement {
     };
     walk(this.target);
     this.components = [...all];
+    
+    // Build hierarchical structure
+    this.componentTree = this._buildComponentHierarchy();
+    
     // Use _select() instead of directly setting this.selected to properly set up observers
     if (this.components.length > 0) {
       this._select(this.components[0]);
     }
+  }
+
+  _buildComponentHierarchy() {
+    const buildNode = (element) => {
+      const node = {
+        element: element,
+        children: []
+      };
+
+      // Find child components
+      const childComponents = this.components.filter(comp => {
+        return comp !== element && this._isDescendant(element, comp);
+      });
+
+      // Filter out components that are nested deeper
+      const directChildren = childComponents.filter(child => {
+        return !childComponents.some(other => 
+          other !== child && this._isDescendant(other, child)
+        );
+      });
+
+      directChildren.forEach(child => {
+        node.children.push(buildNode(child));
+      });
+
+      return node;
+    };
+
+    // Find root components (components with no parent components)
+    const rootComponents = this.components.filter(comp => {
+      return !this.components.some(other => 
+        other !== comp && this._isDescendant(other, comp)
+      );
+    });
+
+    return rootComponents.map(root => buildNode(root));
+  }
+
+  _isDescendant(parent, child) {
+    // Check if child is a descendant of parent
+    let current = child.parentElement;
+    while (current) {
+      if (current === parent) return true;
+      current = current.parentElement;
+    }
+    
+    // Also check shadow DOM
+    if (parent.shadowRoot) {
+      return parent.shadowRoot.contains(child);
+    }
+    
+    return false;
+  }
+
+  _renderComponentTree() {
+    if (!this.componentTree || this.componentTree.length === 0) {
+      return html`<div style="padding: 16px; text-align: center; color: var(--text-secondary);">No components found</div>`;
+    }
+
+    return this.componentTree.map(node => this._renderComponentTreeNode(node, 0, true));
+  }
+
+  _renderComponentTreeNode(node, level, isRoot = false) {
+    const isSelected = node.element === this.selected;
+    
+    return html`
+      <div class="component-tree-node ${isRoot ? 'root' : ''}" style="margin-left: ${level * 16}px">
+        <button 
+          class="component-item ${isSelected ? 'selected' : ''}"
+          @click=${() => this._select(node.element)}
+        >
+          <span class="component-tag">${node.element.tagName.toLowerCase()}</span>
+          ${node.element.id ? html`<span class="component-id">#${node.element.id}</span>` : ''}
+          ${node.children.length > 0 ? html`<span class="component-id">(${node.children.length})</span>` : ''}
+        </button>
+        ${node.children.map(child => this._renderComponentTreeNode(child, level + 1))}
+      </div>
+    `;
   }
 
   _select(el) {

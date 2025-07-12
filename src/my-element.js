@@ -57,6 +57,8 @@ export class MyElement extends LitElement {
       <button @click=${() => this.list = [...this.list, `Item ${this.list.length + 1}`]}>
         Add Item
       </button>
+      <form-component></form-component>
+      <card-component></card-component>
     `
   }
 

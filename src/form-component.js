@@ -192,6 +192,7 @@ export class FormComponent extends LitElement {
           Preferred Date: ${this.formData.preferredDate || 'Not selected'}
         </div>
       </form>
+      <card-component></card-component>
     `;
   }
 
