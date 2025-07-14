@@ -401,6 +401,14 @@ class LitDebugger extends LitElement {
       margin-left: 8px;
     }
 
+    .circular-warning {
+      display: inline-block;
+      margin-left: 8px;
+      font-size: 12px;
+      cursor: help;
+      opacity: 0.8;
+    }
+
     .property-input, .property-textarea {
       width: 100%;
       padding: 10px 12px;
@@ -1001,6 +1009,35 @@ class LitDebugger extends LitElement {
     }
   }
 
+  _safeStringify(value, space = 2) {
+    const seen = new WeakSet();
+    
+    return JSON.stringify(value, (key, val) => {
+      if (typeof val === 'object' && val !== null) {
+        if (seen.has(val)) {
+          return '[Circular Reference]';
+        }
+        seen.add(val);
+      }
+      
+      // Handle common non-serializable objects
+      if (val instanceof HTMLElement) {
+        return `[HTMLElement: ${val.tagName}]`;
+      }
+      if (val instanceof Event) {
+        return `[Event: ${val.type}]`;
+      }
+      if (typeof val === 'function') {
+        return `[Function: ${val.name || 'anonymous'}]`;
+      }
+      if (val instanceof Node) {
+        return `[Node: ${val.nodeName}]`;
+      }
+      
+      return val;
+    }, space);
+  }
+
   _renderProps(el) {
   const ctor = el.constructor;
   const propDefs = ctor.properties || {};
@@ -1020,11 +1057,25 @@ class LitDebugger extends LitElement {
     else if (typeof value === 'number') typeLabel = 'Number';
     else typeLabel = 'String';
     
+    let stringifiedValue = '';
+    let hasCircularRef = false;
+    
+    if (isArray || isObject) {
+      try {
+        stringifiedValue = this._safeStringify(value, 2);
+        hasCircularRef = stringifiedValue.includes('[Circular Reference]');
+      } catch (e) {
+        stringifiedValue = `[Error: ${e.message}]`;
+        hasCircularRef = true;
+      }
+    }
+    
     return html`
       <div class="property-group">
         <label class="property-label">
           ${key}
           <span class="property-type">${typeLabel}</span>
+          ${hasCircularRef ? html`<span class="circular-warning" title="Contains circular references or non-serializable objects">⚠️</span>` : ''}
         </label>
         ${isDate
           ? html`
@@ -1040,12 +1091,13 @@ class LitDebugger extends LitElement {
                 <textarea
                   class="property-textarea scrollbar-thin"
                   rows="4"
-                  .value=${JSON.stringify(value, null, 2)}
+                  .value=${stringifiedValue}
                   @input=${(e) => this._updateProp(el, key, e.target.value)}
                   placeholder=${isArray 
                     ? "Enter JSON array, e.g. ['item1', 'item2']"
                     : "Enter JSON object, e.g. {'key': 'value'}"
                   }
+                  ?readonly=${hasCircularRef}
                 ></textarea>
               `
             : html`
@@ -1203,6 +1255,12 @@ class LitDebugger extends LitElement {
   _updateProp(el, key, raw) {
     const old = el[key];
     let val = raw;
+    
+    // Don't try to update properties that contain circular references
+    if (typeof raw === 'string' && raw.includes('[Circular Reference]')) {
+      console.warn(`Cannot update property ${key}: contains circular references`);
+      return;
+    }
     
     if (old instanceof Date) {
       // Handle Date objects
