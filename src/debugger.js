@@ -7,6 +7,7 @@ class LitDebugger extends LitElement {
     components: { type: Array },
     isOpen: { type: Boolean },
     activeTab: { type: String },
+    selectors: { type: Array }, // Array of CSS selectors to monitor
   };
 
   static styles = css`
@@ -403,6 +404,33 @@ class LitDebugger extends LitElement {
     this.componentTree = [];
     this.isOpen = false;
     this.activeTab = 'properties';
+    // Selectors will be auto-detected from first child or provided via attribute
+    this.selectors = [];
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    
+    // Find components after a short delay to let DOM settle
+    setTimeout(() => {
+      this._findComponents();
+    }, 100);
+    
+    // Also find when DOM content is loaded
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        this._findComponents();
+      });
+    }
+  }
+
+  updated(changedProperties) {
+    super.updated(changedProperties);
+    
+    // If selectors property changed, find components
+    if (changedProperties.has('selectors')) {
+      this._findComponents();
+    }
   }
 
   render() {
@@ -428,6 +456,23 @@ class LitDebugger extends LitElement {
         
         <div class="debugger-content">
           <div class="component-list scrollbar-thin">
+            <div style="margin-bottom: 16px;">
+              <h4 style="margin: 0 0 8px 0;">Selectors</h4>
+              <input 
+                type="text" 
+                placeholder="Enter CSS selectors (comma-separated)"
+                .value=${this.selectors.join(', ')}
+                @input=${this._updateSelectors}
+                style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; margin-bottom: 8px;"
+              />
+              <button 
+                @click=${this._findComponents}
+                style="background: var(--primary-color); color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;"
+              >
+                🔍 Find Components
+              </button>
+            </div>
+            
             <h4>Components (${this.components.length})</h4>
             <div class="component-tree">
               ${this._renderComponentTree()}
@@ -469,29 +514,73 @@ class LitDebugger extends LitElement {
   }
 
   _onSlotChange(e) {
-    const assigned = e.target.assignedElements?.();
-    if (assigned?.length > 0) {
-      this.target = assigned[0];
-      this._scanComponents();
-    }
+    // Refresh components when slot content changes
+    this._findComponents();
   }
 
-  _scanComponents() {
-    const all = new Set();
-    const walk = (el) => {
-      if (el.tagName?.includes('-')) all.add(el);
-      if (el.shadowRoot) el.shadowRoot.querySelectorAll('*').forEach(walk);
-      el.querySelectorAll?.('*').forEach(walk);
-    };
-    walk(this.target);
-    this.components = [...all];
+  _findComponents() {
+    // Determine selectors to use
+    let selectorsToUse = [];
+    
+    // Use current selectors if they exist, otherwise auto-detect from first child
+    if (this.selectors && this.selectors.length > 0) {
+      selectorsToUse = this.selectors;
+    } else {
+      // Auto-detect from first web component (element with "-" in tag name)
+      const allChildren = Array.from(this.querySelectorAll('*'));
+      const firstWebComponent = allChildren.find(el => el.tagName?.includes('-'));
+      
+      if (firstWebComponent && firstWebComponent.tagName) {
+        const tagName = firstWebComponent.tagName.toLowerCase();
+        selectorsToUse = [tagName];
+        this.selectors = selectorsToUse; // Update the property
+      }
+    }
+    
+    if (selectorsToUse.length === 0) {
+      console.warn('No selectors provided and no child elements found');
+      return;
+    }
+    
+    const components = new Set();
+    
+    // Use querySelectorAll with the determined selectors
+    selectorsToUse.forEach(selector => {
+      try {
+        // Search in document
+        document.querySelectorAll(selector).forEach(el => components.add(el));
+        
+        // Also search in shadow DOM of existing components
+        components.forEach(comp => {
+          if (comp.shadowRoot) {
+            comp.shadowRoot.querySelectorAll(selector).forEach(el => components.add(el));
+          }
+        });
+      } catch (e) {
+        console.warn(`Invalid selector: ${selector}`, e);
+      }
+    });
+    
+    this.components = [...components];
     
     // Build hierarchical structure
     this.componentTree = this._buildComponentHierarchy();
     
-    // Use _select() instead of directly setting this.selected to properly set up observers
-    if (this.components.length > 0) {
+    // Auto-select first component if none selected
+    if (this.components.length > 0 && !this.selected) {
       this._select(this.components[0]);
+    }
+    
+    this.requestUpdate();
+  }
+
+  _updateSelectors(e) {
+    const value = e.target.value.trim();
+    if (value) {
+      // Split by comma and clean up
+      this.selectors = value.split(',').map(s => s.trim()).filter(s => s);
+    } else {
+      this.selectors = [];
     }
   }
 
