@@ -126,6 +126,12 @@ class LitDebugger extends LitElement {
       overflow-y: auto;
     }
 
+    .component-tree-container {
+      background: var(--surface);
+      height: 100%;
+      overflow-y: auto;
+    }
+
     .component-list h4 {
       margin: 0;
       padding: 12px 16px;
@@ -378,6 +384,42 @@ class LitDebugger extends LitElement {
       margin-right: 8px;
     }
 
+    .component-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .component-header h3 {
+      margin: 0;
+    }
+
+    .highlight-btn {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .highlight-btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
+    }
+
+    .highlight-btn:active {
+      transform: translateY(0);
+    }
+
     .property-group {
       margin-bottom: 20px;
     }
@@ -501,6 +543,16 @@ class LitDebugger extends LitElement {
       border-bottom-color: var(--primary-color);
     }
 
+    .tab:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .tab:disabled:hover {
+      color: var(--text-secondary);
+      background: transparent;
+    }
+
     .tab-content {
       flex: 1;
       overflow-y: auto;
@@ -553,7 +605,8 @@ class LitDebugger extends LitElement {
     this.components = [];
     this.componentTree = [];
     this.isOpen = false;
-    this.activeTab = 'properties';
+    this.activeTab = 'selectors'; // Changed default tab to selectors
+    this.activeSubTab = 'properties'; // For the properties tab sub-tabs
     // Selectors will be auto-detected from first child or provided via attribute
     this.selectors = [];
     this._highlightOverlay = null;
@@ -606,84 +659,30 @@ class LitDebugger extends LitElement {
         </div>
         
         <div class="debugger-content">
-          <div class="component-list scrollbar-thin">
-            <div class="selectors-section">
-              <div class="selectors-header">
-                <h4>🎯 Component Selectors</h4>
-                <div class="selectors-info">
-                  ${this.selectors.length > 0 
-                    ? html`<span class="selector-count">${this.selectors.length} selector${this.selectors.length > 1 ? 's' : ''}</span>`
-                    : html`<span class="auto-detected">Auto-detected</span>`
-                  }
-                </div>
-              </div>
-              
-              <div class="selector-input-container">
-                <input 
-                  type="text" 
-                  class="selector-input"
-                  placeholder="e.g., my-element, .component, [data-widget]"
-                  .value=${this.selectors.join(', ')}
-                  @input=${this._updateSelectors}
-                  @focus=${this._onSelectorFocus}
-                  @blur=${this._onSelectorBlur}
-                />
-                <div class="input-hint">
-                  💡 Separate multiple selectors with commas
-                </div>
-              </div>
-              
-              <!-- Show current selectors as tags -->
-              ${this.selectors.length > 0 ? html`
-                <div class="selector-tags">
-                  ${this.selectors.map(selector => html`
-                    <span class="selector-tag">
-                      ${selector}
-                      <button 
-                        class="remove-selector" 
-                        @click=${() => this._removeSelector(selector)}
-                        title="Remove selector"
-                      >×</button>
-                    </span>
-                  `)}
-                </div>
-              ` : ''}
-            </div>
-            
-            <h4>📦 Components (${this.components.length})</h4>
-            <div class="component-tree" @keydown=${this._handleKeyNavigation} tabindex="0">
-              ${this._renderComponentTree()}
-            </div>
+          <div class="tabs">
+            <button 
+              class="tab ${this.activeTab === 'selectors' ? 'active' : ''}"
+              @click=${() => this._setActiveTab('selectors')}
+            >
+              🎯 Selectors
+            </button>
+            <button 
+              class="tab ${this.activeTab === 'tree' ? 'active' : ''}"
+              @click=${() => this._setActiveTab('tree')}
+            >
+              📦 Components (${this.components.length})
+            </button>
+            <button 
+              class="tab ${this.activeTab === 'properties' ? 'active' : ''}"
+              @click=${() => this._setActiveTab('properties')}
+              ?disabled=${!this.selected}
+            >
+              � Selected
+            </button>
           </div>
           
-          <div class="details scrollbar-thin">
-            ${this.selected
-              ? html`
-                  <h3>${this.selected.tagName.toLowerCase()}</h3>
-                  <div class="tabs">
-                    <button 
-                      class="tab ${this.activeTab === 'properties' ? 'active' : ''}"
-                      @click=${() => this._setActiveTab('properties')}
-                    >
-                      📋 Properties
-                    </button>
-                    <button 
-                      class="tab ${this.activeTab === 'performance' ? 'active' : ''}"
-                      @click=${() => this._setActiveTab('performance')}
-                    >
-                      📊 Performance
-                    </button>
-                  </div>
-                  <div class="tab-content">
-                    ${this._renderTabContent()}
-                  </div>
-                `
-              : html`
-                  <div class="empty-state">
-                    <div class="empty-state-icon">🎯</div>
-                    <p>Select a component to inspect its properties</p>
-                  </div>
-                `}
+          <div class="tab-content">
+            ${this._renderMainTabContent()}
           </div>
         </div>
       </div>
@@ -919,8 +918,7 @@ class LitDebugger extends LitElement {
         <button 
           class="component-item ${isSelected ? 'selected' : ''}"
           @click=${() => this._select(node.element)}
-          @dblclick=${() => this._highlightSelected()}
-          title="Click to select, double-click to highlight"
+          title="Click to select"
         >
           <span class="component-tag">${node.element.tagName.toLowerCase()}</span>
           ${node.element.id ? html`<span class="component-id">#${node.element.id}</span>` : ''}
@@ -945,6 +943,11 @@ class LitDebugger extends LitElement {
     }
     
     this.selected = el;
+    
+    // Switch to properties tab when a component is selected
+    if (this.selected) {
+      this.activeTab = 'properties';
+    }
     
     if (this.selected) {
       // Initialize performance tracking immediately when component is selected
@@ -1158,8 +1161,127 @@ class LitDebugger extends LitElement {
     this.activeTab = tab;
   }
 
-  _renderTabContent() {
+  _renderMainTabContent() {
     switch (this.activeTab) {
+      case 'selectors':
+        return this._renderSelectorsTab();
+      case 'tree':
+        return this._renderTreeTab();
+      case 'properties':
+        return this._renderPropertiesTab();
+      default:
+        return this._renderSelectorsTab();
+    }
+  }
+
+  _renderSelectorsTab() {
+    return html`
+      <div class="selectors-section">
+        <div class="selectors-header">
+          <h4>🎯 Component Selectors</h4>
+          <div class="selectors-info">
+            ${this.selectors.length > 0 
+              ? html`<span class="selector-count">${this.selectors.length} selector${this.selectors.length > 1 ? 's' : ''}</span>`
+              : html`<span class="auto-detected">Auto-detected</span>`
+            }
+          </div>
+        </div>
+        
+        <div class="selector-input-container">
+          <input 
+            type="text" 
+            class="selector-input"
+            placeholder="e.g., my-element, .component, [data-widget]"
+            .value=${this.selectors.join(', ')}
+            @input=${this._updateSelectors}
+            @focus=${this._onSelectorFocus}
+            @blur=${this._onSelectorBlur}
+          />
+          <div class="input-hint">
+            💡 Separate multiple selectors with commas
+          </div>
+        </div>
+        
+        <!-- Show current selectors as tags -->
+        ${this.selectors.length > 0 ? html`
+          <div class="selector-tags">
+            ${this.selectors.map(selector => html`
+              <span class="selector-tag">
+                ${selector}
+                <button 
+                  class="remove-selector" 
+                  @click=${() => this._removeSelector(selector)}
+                  title="Remove selector"
+                >×</button>
+              </span>
+            `)}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  _renderTreeTab() {
+    return html`
+      <div class="component-tree-container">
+        <div class="component-tree" @keydown=${this._handleKeyNavigation} tabindex="0">
+          ${this._renderComponentTree()}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderPropertiesTab() {
+    if (!this.selected) {
+      return html`
+        <div class="empty-state">
+          <div class="empty-state-icon">🎯</div>
+          <p>Select a component to inspect its properties</p>
+        </div>
+      `;
+    }
+
+    return html`
+      <div class="selected-component-details">
+        <div class="component-header">
+          <h3>${this.selected.tagName.toLowerCase()}</h3>
+          <button 
+            class="highlight-btn"
+            @click=${() => this._highlightSelected()}
+            title="Highlight component on page"
+          >
+            🎯 Highlight
+          </button>
+        </div>
+        <div class="tabs">
+          <button 
+            class="tab ${this.activeSubTab === 'properties' ? 'active' : ''}"
+            @click=${() => this._setSubTab('properties')}
+          >
+            📋 Properties
+          </button>
+          <button 
+            class="tab ${this.activeSubTab === 'performance' ? 'active' : ''}"
+            @click=${() => this._setSubTab('performance')}
+          >
+            📊 Performance
+          </button>
+        </div>
+        <div class="tab-content">
+          ${this._renderSelectedComponentContent()}
+        </div>
+      </div>
+    `;
+  }
+
+  _setSubTab(subTab) {
+    this.activeSubTab = subTab;
+    this.requestUpdate();
+  }
+
+  _renderSelectedComponentContent() {
+    const subTab = this.activeSubTab || 'properties';
+    switch (subTab) {
       case 'properties':
         return this._renderProps(this.selected);
       case 'performance':
