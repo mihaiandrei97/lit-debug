@@ -233,6 +233,130 @@ class LitDebugger extends LitElement {
       outline-offset: -2px;
     }
 
+    /* Enhanced Selectors Section */
+    .selectors-section {
+      background: var(--surface);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border);
+      transition: all 0.2s ease;
+    }
+
+    .selectors-section:hover {
+      border-color: var(--primary-color);
+      box-shadow: 0 2px 8px rgba(33, 150, 243, 0.1);
+    }
+
+    .selectors-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .selectors-header h4 {
+      margin: 0;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .selectors-info {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .selector-count {
+      background: var(--primary-color);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 500;
+    }
+
+    .auto-detected {
+      background: var(--success-color);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 500;
+    }
+
+    .selector-input-container {
+      position: relative;
+    }
+
+    .selector-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+      transition: all 0.2s ease;
+      background: var(--background);
+      box-sizing: border-box;
+    }
+
+    .selector-input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+      background: white;
+    }
+
+    .selector-input:hover {
+      border-color: var(--primary-dark);
+    }
+
+    .input-hint {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 6px;
+      padding-left: 4px;
+      opacity: 0.8;
+    }
+
+    .selector-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .selector-tag {
+      display: inline-flex;
+      align-items: center;
+      background: var(--primary-color);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-family: monospace;
+      font-weight: 500;
+      gap: 6px;
+    }
+
+    .remove-selector {
+      background: none;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      margin: 0;
+      opacity: 0.8;
+      transition: opacity 0.2s ease;
+    }
+
+    .remove-selector:hover {
+      opacity: 1;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 50%;
+    }
+
     .details {
       flex: 1;
       padding: 20px;
@@ -475,18 +599,50 @@ class LitDebugger extends LitElement {
         
         <div class="debugger-content">
           <div class="component-list scrollbar-thin">
-            <div style="margin-bottom: 16px;">
-              <h4 style="margin: 0 0 8px 0;">Selectors</h4>
-              <input 
-                type="text" 
-                placeholder="Enter CSS selectors (comma-separated)"
-                .value=${this.selectors.join(', ')}
-                @input=${this._updateSelectors}
-                style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;"
-              />
+            <div class="selectors-section">
+              <div class="selectors-header">
+                <h4>🎯 Component Selectors</h4>
+                <div class="selectors-info">
+                  ${this.selectors.length > 0 
+                    ? html`<span class="selector-count">${this.selectors.length} selector${this.selectors.length > 1 ? 's' : ''}</span>`
+                    : html`<span class="auto-detected">Auto-detected</span>`
+                  }
+                </div>
+              </div>
+              
+              <div class="selector-input-container">
+                <input 
+                  type="text" 
+                  class="selector-input"
+                  placeholder="e.g., my-element, .component, [data-widget]"
+                  .value=${this.selectors.join(', ')}
+                  @input=${this._updateSelectors}
+                  @focus=${this._onSelectorFocus}
+                  @blur=${this._onSelectorBlur}
+                />
+                <div class="input-hint">
+                  💡 Separate multiple selectors with commas
+                </div>
+              </div>
+              
+              <!-- Show current selectors as tags -->
+              ${this.selectors.length > 0 ? html`
+                <div class="selector-tags">
+                  ${this.selectors.map(selector => html`
+                    <span class="selector-tag">
+                      ${selector}
+                      <button 
+                        class="remove-selector" 
+                        @click=${() => this._removeSelector(selector)}
+                        title="Remove selector"
+                      >×</button>
+                    </span>
+                  `)}
+                </div>
+              ` : ''}
             </div>
             
-            <h4>Components (${this.components.length})</h4>
+            <h4>📦 Components (${this.components.length})</h4>
             <div class="component-tree" @keydown=${this._handleKeyNavigation} tabindex="0">
               ${this._renderComponentTree()}
             </div>
@@ -595,6 +751,21 @@ class LitDebugger extends LitElement {
     } else {
       this.selectors = [];
     }
+  }
+
+  _removeSelector(selectorToRemove) {
+    this.selectors = this.selectors.filter(s => s !== selectorToRemove);
+    this.requestUpdate();
+  }
+
+  _onSelectorFocus(e) {
+    e.target.parentElement.parentElement.style.borderColor = 'var(--primary-color)';
+    e.target.parentElement.parentElement.style.boxShadow = '0 4px 12px rgba(33, 150, 243, 0.15)';
+  }
+
+  _onSelectorBlur(e) {
+    e.target.parentElement.parentElement.style.borderColor = 'var(--border)';
+    e.target.parentElement.parentElement.style.boxShadow = 'none';
   }
 
   _highlightSelected() {
