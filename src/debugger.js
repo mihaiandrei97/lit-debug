@@ -210,9 +210,27 @@ class LitDebugger extends LitElement {
     }
 
     .component-id {
-      font-size: 12px;
-      opacity: 0.7;
+      color: var(--primary-color);
+      font-weight: 500;
+      font-size: 11px;
       margin-left: 4px;
+    }
+
+    .component-count, .component-children {
+      color: var(--text-secondary);
+      font-size: 10px;
+      margin-left: 4px;
+    }
+
+    .component-class {
+      color: var(--warning-color);
+      font-size: 10px;
+      margin-left: 4px;
+    }
+
+    .component-tree:focus {
+      outline: 2px solid var(--primary-color);
+      outline-offset: -2px;
     }
 
     .details {
@@ -406,6 +424,7 @@ class LitDebugger extends LitElement {
     this.activeTab = 'properties';
     // Selectors will be auto-detected from first child or provided via attribute
     this.selectors = [];
+    this._highlightOverlay = null;
   }
 
   connectedCallback() {
@@ -463,18 +482,12 @@ class LitDebugger extends LitElement {
                 placeholder="Enter CSS selectors (comma-separated)"
                 .value=${this.selectors.join(', ')}
                 @input=${this._updateSelectors}
-                style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; margin-bottom: 8px;"
+                style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;"
               />
-              <button 
-                @click=${this._findComponents}
-                style="background: var(--primary-color); color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;"
-              >
-                🔍 Find Components
-              </button>
             </div>
             
             <h4>Components (${this.components.length})</h4>
-            <div class="component-tree">
+            <div class="component-tree" @keydown=${this._handleKeyNavigation} tabindex="0">
               ${this._renderComponentTree()}
             </div>
           </div>
@@ -584,6 +597,80 @@ class LitDebugger extends LitElement {
     }
   }
 
+  _highlightSelected() {
+    if (!this.selected) return;
+    
+    // Remove existing highlight
+    this._removeHighlight();
+    
+    // Create highlight overlay
+    const rect = this.selected.getBoundingClientRect();
+    const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+    
+    this._highlightOverlay = document.createElement('div');
+    this._highlightOverlay.style.cssText = `
+      position: absolute;
+      left: ${rect.left + scrollX}px;
+      top: ${rect.top + scrollY}px;
+      width: ${rect.width}px;
+      height: ${rect.height}px;
+      background: rgba(33, 150, 243, 0.3);
+      border: 2px solid var(--primary-color);
+      pointer-events: none;
+      z-index: 9999;
+      animation: pulse 2s ease-in-out 3;
+    `;
+    
+    // Add pulse animation
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes pulse {
+        0%, 100% { opacity: 0.3; }
+        50% { opacity: 0.7; }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    document.body.appendChild(this._highlightOverlay);
+    
+    // Auto-remove after 6 seconds
+    setTimeout(() => this._removeHighlight(), 6000);
+    
+    // Scroll to element
+    this.selected.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  _removeHighlight() {
+    if (this._highlightOverlay && this._highlightOverlay.parentNode) {
+      this._highlightOverlay.parentNode.removeChild(this._highlightOverlay);
+      this._highlightOverlay = null;
+    }
+  }
+
+  _handleKeyNavigation(e) {
+    if (!this.components.length) return;
+    
+    const currentIndex = this.selected ? this.components.indexOf(this.selected) : -1;
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        const nextIndex = currentIndex < this.components.length - 1 ? currentIndex + 1 : 0;
+        this._select(this.components[nextIndex]);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        const prevIndex = currentIndex > 0 ? currentIndex - 1 : this.components.length - 1;
+        this._select(this.components[prevIndex]);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        this._highlightSelected();
+        break;
+    }
+  }
+
   _buildComponentHierarchy() {
     const buildNode = (element) => {
       const node = {
@@ -646,16 +733,20 @@ class LitDebugger extends LitElement {
 
   _renderComponentTreeNode(node, level, isRoot = false) {
     const isSelected = node.element === this.selected;
+    const instanceCount = this.components.filter(c => c.tagName === node.element.tagName).length;
     
     return html`
       <div class="component-tree-node ${isRoot ? 'root' : ''}" style="margin-left: ${level * 16}px">
         <button 
           class="component-item ${isSelected ? 'selected' : ''}"
           @click=${() => this._select(node.element)}
+          @dblclick=${() => this._highlightSelected()}
+          title="Click to select, double-click to highlight"
         >
           <span class="component-tag">${node.element.tagName.toLowerCase()}</span>
           ${node.element.id ? html`<span class="component-id">#${node.element.id}</span>` : ''}
-          ${node.children.length > 0 ? html`<span class="component-id">(${node.children.length})</span>` : ''}
+          ${instanceCount > 1 ? html`<span class="component-count">(${instanceCount} instances)</span>` : ''}
+          ${node.children.length > 0 ? html`<span class="component-children">[${node.children.length} children]</span>` : ''}
         </button>
         ${node.children.map(child => this._renderComponentTreeNode(child, level + 1))}
       </div>
