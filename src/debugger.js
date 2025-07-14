@@ -403,6 +403,34 @@ class LitDebugger extends LitElement {
     this.componentTree = [];
     this.isOpen = false;
     this.activeTab = 'properties';
+    this._scanTimeout = null;
+    this._isScanning = false;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    
+    // Schedule initial component scan after UI is loaded
+    this._scheduleComponentScan();
+    
+    // Also scan when DOM content is loaded if it hasn't happened yet
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        this._scheduleComponentScan();
+      });
+    }
+  }
+
+  _scheduleComponentScan(delay = 100) {
+    // Clear any existing timeout
+    if (this._scanTimeout) {
+      clearTimeout(this._scanTimeout);
+    }
+    
+    // Schedule scanning with a delay to avoid blocking UI
+    this._scanTimeout = setTimeout(() => {
+      this._scanComponentsAsync();
+    }, delay);
   }
 
   render() {
@@ -428,7 +456,18 @@ class LitDebugger extends LitElement {
         
         <div class="debugger-content">
           <div class="component-list scrollbar-thin">
-            <h4>Components (${this.components.length})</h4>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h4>Components (${this.components.length})</h4>
+              <button 
+                class="refresh-btn"
+                @click=${() => this._scheduleComponentScan(0)}
+                title="Refresh component list"
+                style="background: none; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; color: var(--text-secondary);"
+                ?disabled=${this._isScanning}
+              >
+                ${this._isScanning ? '🔄' : '↻'}
+              </button>
+            </div>
             <div class="component-tree">
               ${this._renderComponentTree()}
             </div>
@@ -469,30 +508,99 @@ class LitDebugger extends LitElement {
   }
 
   _onSlotChange(e) {
-    const assigned = e.target.assignedElements?.();
-    if (assigned?.length > 0) {
-      this.target = assigned[0];
-      this._scanComponents();
+    // Schedule scanning with a small delay to avoid blocking during slot changes
+    this._scheduleComponentScan(50);
+  }
+
+  async _scanComponentsAsync() {
+    if (this._isScanning) return; // Prevent multiple concurrent scans
+    
+    this._isScanning = true;
+    this.requestUpdate(); // Update UI to show loading state
+    
+    try {
+      const all = new Set();
+      const elementsToProcess = [];
+      
+      // Collect all elements first with enhanced slot handling
+      const collectElements = (el) => {
+        elementsToProcess.push(el);
+        
+        // Scan shadow DOM
+        if (el.shadowRoot) {
+          el.shadowRoot.querySelectorAll('*').forEach(collectElements);
+          
+          // Special handling for slot elements - scan their assigned nodes
+          const slots = el.shadowRoot.querySelectorAll('slot');
+          slots.forEach(slot => {
+            if (slot.assignedElements) {
+              slot.assignedElements().forEach(assignedEl => {
+                collectElements(assignedEl);
+              });
+            }
+          });
+        }
+        
+        // Scan regular children
+        el.querySelectorAll?.('*').forEach(collectElements);
+      };
+      
+      // Start from the target element
+      if (this.target) {
+        collectElements(this.target);
+      }
+      
+      // Also scan our own slotted content
+      const slot = this.shadowRoot?.querySelector('slot');
+      if (slot && slot.assignedElements) {
+        slot.assignedElements().forEach(assignedEl => {
+          collectElements(assignedEl);
+        });
+      }
+      
+      // Fallback: scan the entire document if no components found
+      if (elementsToProcess.length === 0) {
+        document.querySelectorAll('*').forEach(collectElements);
+      }
+      
+      // Process elements in batches to avoid blocking UI
+      const batchSize = 50;
+      for (let i = 0; i < elementsToProcess.length; i += batchSize) {
+        const batch = elementsToProcess.slice(i, i + batchSize);
+        
+        // Process batch
+        batch.forEach(el => {
+          if (el.tagName?.includes('-')) all.add(el);
+        });
+        
+        // Yield control back to the browser every batch
+        if (i + batchSize < elementsToProcess.length) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+      
+      this.components = [...all];
+      
+      // Build hierarchical structure
+      this.componentTree = this._buildComponentHierarchy();
+      
+      // Use _select() instead of directly setting this.selected to properly set up observers
+      if (this.components.length > 0 && !this.selected) {
+        this._select(this.components[0]);
+      }
+      
+      // Trigger a re-render
+      this.requestUpdate();
+      
+    } finally {
+      this._isScanning = false;
+      this.requestUpdate(); // Update UI to hide loading state
     }
   }
 
   _scanComponents() {
-    const all = new Set();
-    const walk = (el) => {
-      if (el.tagName?.includes('-')) all.add(el);
-      if (el.shadowRoot) el.shadowRoot.querySelectorAll('*').forEach(walk);
-      el.querySelectorAll?.('*').forEach(walk);
-    };
-    walk(this.target);
-    this.components = [...all];
-    
-    // Build hierarchical structure
-    this.componentTree = this._buildComponentHierarchy();
-    
-    // Use _select() instead of directly setting this.selected to properly set up observers
-    if (this.components.length > 0) {
-      this._select(this.components[0]);
-    }
+    // Legacy sync method - delegate to async version
+    this._scanComponentsAsync();
   }
 
   _buildComponentHierarchy() {
@@ -548,8 +656,22 @@ class LitDebugger extends LitElement {
   }
 
   _renderComponentTree() {
+    if (this._isScanning) {
+      return html`
+        <div style="padding: 16px; text-align: center; color: var(--text-secondary);">
+          <div style="margin-bottom: 8px;">🔄</div>
+          <div>Scanning components...</div>
+        </div>
+      `;
+    }
+    
     if (!this.componentTree || this.componentTree.length === 0) {
-      return html`<div style="padding: 16px; text-align: center; color: var(--text-secondary);">No components found</div>`;
+      return html`
+        <div style="padding: 16px; text-align: center; color: var(--text-secondary);">
+          <div style="margin-bottom: 8px;">🔍</div>
+          <div>No components found</div>
+        </div>
+      `;
     }
 
     return this.componentTree.map(node => this._renderComponentTreeNode(node, 0, true));
@@ -738,6 +860,13 @@ class LitDebugger extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    
+    // Clear any pending scan timeout
+    if (this._scanTimeout) {
+      clearTimeout(this._scanTimeout);
+      this._scanTimeout = null;
+    }
+    
     if (this._mutationObserver) {
       this._mutationObserver.disconnect();
     }
